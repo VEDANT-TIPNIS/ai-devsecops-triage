@@ -8,15 +8,3 @@ services:
     ports:
       - "3000:3000"
 
-  # Free, local AI engine -- no API key, no cost, no internet call needed
-  # after the model is pulled once.
-  ollama:
-    image: ollama/ollama
-    container_name: ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-
-volumes:
-  ollama_data:

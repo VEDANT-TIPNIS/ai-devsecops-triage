@@ -77,7 +77,13 @@ def call_ollama_for_finding(alert, index, total, max_retries=2):
         try:
             response = requests.post(
                 OLLAMA_URL,
-                json={"model": MODEL, "prompt": prompt, "stream": False, "format": "json"},
+                json={
+                    "model": MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                    "format": "json",
+                    "options": {"temperature": 0},  # deterministic: same input -> same output
+                },
                 timeout=180,
             )
             response.raise_for_status()

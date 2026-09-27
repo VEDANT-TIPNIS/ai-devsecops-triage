@@ -19,7 +19,7 @@ pipeline {
             }
         }
 
-        stage('Start target app + local AI engine') {
+        stage('Start target app') {
             steps {
                 sh 'docker compose up -d'
                 // give Juice Shop a few seconds to boot
@@ -45,7 +45,9 @@ pipeline {
 
         stage('Pull free local AI model (first run only)') {
             steps {
-                sh 'docker exec ollama ollama pull phi3 || true'
+                // Ollama runs natively on the Mac (for GPU/Metal acceleration),
+                // not in Docker, so this is just a normal host command.
+                sh 'ollama pull phi3 || true'
             }
         }
 
