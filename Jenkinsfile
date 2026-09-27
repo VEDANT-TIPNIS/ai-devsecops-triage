@@ -1,6 +1,13 @@
 pipeline {
     agent any
 
+    environment {
+        // Jenkins doesn't inherit your terminal's PATH, so Docker Desktop's
+        // binary location (Apple Silicon Homebrew path) needs to be added
+        // explicitly here.
+        PATH = "/opt/homebrew/bin:/usr/local/bin:${env.PATH}"
+    }
+
     stages {
 
         stage('Checkout') {
