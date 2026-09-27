@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 import requests
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "llama3.2:1b"  # small, fast, free -- swap for phi3, mistral, etc.
+MODEL = "phi3"  # small, free, local -- noticeably better instruction-following than 1b models
 
 
 def load_zap_report(path):
@@ -44,13 +44,21 @@ def load_zap_report(path):
 def build_prompt(alert):
     finding_text = json.dumps(alert, indent=2)
     return f"""You are a security triage assistant embedded in a CI/CD pipeline.
-Below is ONE raw finding from an OWASP ZAP scan (JSON). Return a SINGLE JSON
-object (not an array) with these exact keys:
+Below is ONE raw finding from an OWASP ZAP scan (JSON). Judge it on its OWN
+merits -- do not just copy the "riskdesc" field from the input.
+
+Return a SINGLE JSON object (not an array) with these exact keys:
 - "alert": the alert name
-- "priority": one of CRITICAL, HIGH, MEDIUM, LOW (based on real-world exploitability)
-- "impact": one short plain-English sentence on real-world impact
+- "priority": one of CRITICAL, HIGH, MEDIUM, LOW. Use this guide:
+    CRITICAL = remote code execution, auth bypass, SQL injection, or similar
+    HIGH = XSS, sensitive data exposure, broken access control
+    MEDIUM = missing security headers, misconfiguration with limited impact
+    LOW = informational, best-practice, or purely cosmetic issues
+- "impact": ONE new plain-English sentence written by you explaining the
+  real-world risk. Do not copy words like "Low (Medium)" from the input.
 - "remediation": one short concrete fix
-- "block_build": true or false (true only for CRITICAL/HIGH)
+- "block_build": true ONLY if priority is CRITICAL or HIGH. Most findings
+  should be MEDIUM or LOW and should NOT block the build.
 
 Return ONLY the JSON object. No preamble, no markdown fences, no explanation text.
 

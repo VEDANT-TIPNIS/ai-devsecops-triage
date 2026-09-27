@@ -43,7 +43,7 @@ pipeline {
 
         stage('Pull free local AI model (first run only)') {
             steps {
-                sh 'docker exec ollama ollama pull llama3.2:1b || true'
+                sh 'docker exec ollama ollama pull phi3 || true'
             }
         }
 
