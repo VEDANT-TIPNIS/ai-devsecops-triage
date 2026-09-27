@@ -42,8 +42,12 @@ pipeline {
 
         stage('AI-assisted triage') {
             steps {
-                sh 'pip install -r requirements.txt'
-                sh 'python3 triage_ai_local.py zap_report.json'
+                sh '''
+                    python3 -m venv venv
+                    source venv/bin/activate
+                    pip install -r requirements.txt
+                    python3 triage_ai_local.py zap_report.json
+                '''
             }
         }
 
