@@ -49,18 +49,39 @@ pipeline {
 
         stage('AI-assisted triage') {
             steps {
-                sh '''
-                    python3 -m venv venv
-                    source venv/bin/activate
-                    pip install -r requirements.txt
-                    python3 triage_ai_local.py zap_report.json
-                '''
+                script {
+                    // returnStatus (instead of letting sh fail the stage) lets us
+                    // publish the report first, then decide pass/fail afterward --
+                    // otherwise Jenkins skips every later stage the moment this
+                    // script exits non-zero, and the report never gets archived.
+                    env.TRIAGE_EXIT_CODE = sh(
+                        script: '''
+                            python3 -m venv venv
+                            source venv/bin/activate
+                            pip install -r requirements.txt
+                            python3 triage_ai_local.py zap_report.json
+                        ''',
+                        returnStatus: true
+                    ).toString()
+                }
             }
         }
 
         stage('Publish report') {
             steps {
                 archiveArtifacts artifacts: 'ai_triage_report.md', fingerprint: true
+            }
+        }
+
+        stage('Enforce AI security gate') {
+            steps {
+                script {
+                    if (env.TRIAGE_EXIT_CODE != '0') {
+                        error("Build blocked: AI triage flagged a CRITICAL/HIGH finding. See ai_triage_report.md in Build Artifacts for details.")
+                    } else {
+                        echo "AI triage found no blocking issues. Build passes the security gate."
+                    }
+                }
             }
         }
     }
