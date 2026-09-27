@@ -1,4 +1,4 @@
-# AI-Assisted Vulnerability Triage in a DevSecOps Pipeline (100% Free)
+# AI-Assisted Vulnerability Triage in a DevSecOps Pipeline
 
 **Assignment:** Demonstration of DevOps concepts using AI Tools (20 marks)
 
