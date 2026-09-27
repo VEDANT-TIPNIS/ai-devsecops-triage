@@ -12,8 +12,10 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                // pulls this project from GitHub
                 checkout scm
+                // Remove leftovers from a previous run so a failed build can
+                // never accidentally get an old report archived in its place.
+                sh 'rm -f ai_triage_report.md zap_report.json'
             }
         }
 

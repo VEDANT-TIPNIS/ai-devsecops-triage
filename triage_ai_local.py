@@ -24,6 +24,7 @@ Usage:
 
 import json
 import sys
+import time
 from datetime import datetime, timezone
 
 import requests
@@ -67,39 +68,58 @@ Finding:
 """
 
 
-def call_ollama_for_finding(alert, index, total):
+def call_ollama_for_finding(alert, index, total, max_retries=2):
     prompt = build_prompt(alert)
     print(f"  [{index}/{total}] triaging: {alert.get('alert', 'unknown')} ...")
 
-    response = requests.post(
-        OLLAMA_URL,
-        json={"model": MODEL, "prompt": prompt, "stream": False, "format": "json"},
-        timeout=120,
-    )
-    response.raise_for_status()
-    raw_text = response.json()["response"].strip()
-    raw_text = raw_text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    last_error = None
+    for attempt in range(1, max_retries + 2):  # e.g. 1 initial try + 2 retries
+        try:
+            response = requests.post(
+                OLLAMA_URL,
+                json={"model": MODEL, "prompt": prompt, "stream": False, "format": "json"},
+                timeout=180,
+            )
+            response.raise_for_status()
+            raw_text = response.json()["response"].strip()
+            raw_text = raw_text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
 
-    try:
-        parsed = json.loads(raw_text)
-    except json.JSONDecodeError:
-        print(f"    -> model returned invalid JSON, using fallback values. Raw: {raw_text[:200]}")
-        parsed = {}
+            try:
+                parsed = json.loads(raw_text)
+            except json.JSONDecodeError:
+                print(f"    -> invalid JSON, using fallback values. Raw: {raw_text[:200]}")
+                parsed = {}
 
-    # If the model wrapped it in a list or an extra object, unwrap it
-    if isinstance(parsed, list) and parsed:
-        parsed = parsed[0]
-    if not isinstance(parsed, dict):
-        parsed = {}
+            if isinstance(parsed, list) and parsed:
+                parsed = parsed[0]
+            if not isinstance(parsed, dict):
+                parsed = {}
 
-    # Fill in safe fallbacks for anything the small model left out or botched,
-    # so one bad response never crashes the whole run.
+            return {
+                "alert": parsed.get("alert", alert.get("alert", "Unknown finding")),
+                "priority": parsed.get("priority", "MEDIUM"),
+                "impact": parsed.get("impact", alert.get("desc", "")[:150]),
+                "remediation": parsed.get("remediation", alert.get("solution", "")[:150]),
+                "block_build": parsed.get("block_build", alert.get("riskcode") == "3"),
+            }
+
+        except requests.exceptions.RequestException as e:
+            last_error = e
+            print(f"    -> Ollama request failed (attempt {attempt}): {e}")
+            if attempt <= max_retries:
+                wait = 10 * attempt
+                print(f"    -> retrying in {wait}s...")
+                time.sleep(wait)
+
+    # All retries exhausted -- don't crash the whole run over one bad finding.
+    # Fall back to ZAP's own risk data so the report still stays complete.
+    print(f"    -> giving up on this finding after {max_retries + 1} attempts, using ZAP's own data as fallback.")
     return {
-        "alert": parsed.get("alert", alert.get("alert", "Unknown finding")),
-        "priority": parsed.get("priority", "MEDIUM"),
-        "impact": parsed.get("impact", alert.get("desc", "")[:150]),
-        "remediation": parsed.get("remediation", alert.get("solution", "")[:150]),
-        "block_build": parsed.get("block_build", alert.get("riskcode") == "3"),
+        "alert": alert.get("alert", "Unknown finding"),
+        "priority": "HIGH" if alert.get("riskcode") in ("3", "2") else "LOW",
+        "impact": f"[AI unavailable after retries: {last_error}] {alert.get('desc', '')[:150]}",
+        "remediation": alert.get("solution", "")[:150],
+        "block_build": alert.get("riskcode") == "3",
     }
 
 
