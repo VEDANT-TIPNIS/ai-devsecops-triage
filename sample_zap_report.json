@@ -1,0 +1,83 @@
+{
+  "@version": "2.14.0",
+  "@generated": "Sun, 27 Sep 2026 06:00:00",
+  "site": [
+    {
+      "@name": "http://juice-shop.local:3000",
+      "alerts": [
+        {
+          "pluginid": "40012",
+          "alert": "Cross Site Scripting (Reflected)",
+          "riskcode": "3",
+          "confidence": "2",
+          "riskdesc": "High (Medium)",
+          "desc": "Reflected XSS found in the 'q' parameter of the /rest/products/search endpoint. User input is echoed back in the response without sanitization.",
+          "solution": "Encode all user-controllable output. Use context-aware output encoding and a Content-Security-Policy header.",
+          "cweid": "79",
+          "instances": 3,
+          "url": "http://juice-shop.local:3000/rest/products/search?q=<script>alert(1)</script>"
+        },
+        {
+          "pluginid": "40018",
+          "alert": "SQL Injection",
+          "riskcode": "3",
+          "confidence": "3",
+          "riskdesc": "High (High)",
+          "desc": "SQL injection found in the login form 'email' parameter. Error-based and boolean-based payloads confirmed the vulnerability.",
+          "solution": "Use parameterized queries / prepared statements. Never concatenate user input into SQL strings.",
+          "cweid": "89",
+          "instances": 1,
+          "url": "http://juice-shop.local:3000/rest/user/login"
+        },
+        {
+          "pluginid": "10038",
+          "alert": "Content Security Policy (CSP) Header Not Set",
+          "riskcode": "2",
+          "confidence": "3",
+          "riskdesc": "Medium (High)",
+          "desc": "No CSP header was found, which reduces protection against XSS and data injection attacks.",
+          "solution": "Implement a strict Content-Security-Policy header appropriate for the application.",
+          "cweid": "693",
+          "instances": 12,
+          "url": "http://juice-shop.local:3000/"
+        },
+        {
+          "pluginid": "10020",
+          "alert": "Missing Anti-clickjacking Header",
+          "riskcode": "2",
+          "confidence": "2",
+          "riskdesc": "Medium (Medium)",
+          "desc": "X-Frame-Options header is not set, allowing the page to be framed by other sites.",
+          "solution": "Set X-Frame-Options to DENY or SAMEORIGIN, or use CSP frame-ancestors.",
+          "cweid": "1021",
+          "instances": 8,
+          "url": "http://juice-shop.local:3000/"
+        },
+        {
+          "pluginid": "90022",
+          "alert": "Application Error Disclosure",
+          "riskcode": "1",
+          "confidence": "2",
+          "riskdesc": "Low (Medium)",
+          "desc": "Stack trace or internal error details returned in HTTP response, revealing server-side implementation details.",
+          "solution": "Return generic error messages to clients; log detailed errors server-side only.",
+          "cweid": "209",
+          "instances": 2,
+          "url": "http://juice-shop.local:3000/rest/products/1/reviews"
+        },
+        {
+          "pluginid": "10021",
+          "alert": "X-Content-Type-Options Header Missing",
+          "riskcode": "1",
+          "confidence": "3",
+          "riskdesc": "Low (High)",
+          "desc": "The X-Content-Type-Options header is not set to 'nosniff', which can allow MIME-type sniffing attacks.",
+          "solution": "Set X-Content-Type-Options: nosniff on all responses.",
+          "cweid": "693",
+          "instances": 15,
+          "url": "http://juice-shop.local:3000/"
+        }
+      ]
+    }
+  ]
+}
