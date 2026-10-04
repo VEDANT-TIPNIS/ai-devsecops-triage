@@ -1,0 +1,90 @@
+pipeline {
+    agent any
+
+    environment {
+        PATH = "/opt/homebrew/bin:/usr/local/bin:${env.PATH}"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+                sh 'rm -f ai_triage_report_mutillidae.md zap_mutillidae_report.json'
+            }
+        }
+
+        stage('Start Mutillidae') {
+            steps {
+                sh '''
+                    docker rm -f mutillidae || true
+                    docker run -d -p 8081:80 --name mutillidae citizenstig/nowasp
+                    sleep 20
+                    # First boot needs the database initialized once, or every
+                    # page redirects to database-offline.php
+                    curl -s -o /dev/null http://localhost:8081/set-up-database.php || true
+                    sleep 5
+                '''
+            }
+        }
+
+        stage('Run ZAP security scan') {
+            steps {
+                sh '''
+                    docker run --rm \
+                      -v $(pwd):/zap/wrk/:rw \
+                      zaproxy/zap-stable zap-baseline.py \
+                      -t http://host.docker.internal:8081/index.php \
+                      -J zap_mutillidae_report.json || true
+                '''
+            }
+        }
+
+        stage('Pull free local AI model (first run only)') {
+            steps {
+                sh 'ollama pull phi3 || true'
+            }
+        }
+
+        stage('AI-assisted triage') {
+            steps {
+                script {
+                    env.TRIAGE_EXIT_CODE = sh(
+                        script: '''
+                            python3 -m venv venv
+                            source venv/bin/activate
+                            pip install -r requirements.txt
+                            python3 triage_ai_local.py zap_mutillidae_report.json
+                            mv ai_triage_report.md ai_triage_report_mutillidae.md
+                        ''',
+                        returnStatus: true
+                    ).toString()
+                }
+            }
+        }
+
+        stage('Publish report') {
+            steps {
+                archiveArtifacts artifacts: 'ai_triage_report_mutillidae.md', fingerprint: true
+            }
+        }
+
+        stage('Enforce AI security gate') {
+            steps {
+                script {
+                    if (env.TRIAGE_EXIT_CODE != '0') {
+                        error("Build blocked: AI triage flagged a CRITICAL/HIGH finding on Mutillidae. See ai_triage_report_mutillidae.md in Build Artifacts.")
+                    } else {
+                        echo "AI triage found no blocking issues."
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'docker rm -f mutillidae || true'
+        }
+    }
+}
