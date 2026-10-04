@@ -1,96 +1,100 @@
 # AI-Assisted Vulnerability Triage in a DevSecOps Pipeline
 
-**Assignment:** Demonstration of DevOps concepts using AI Tools (20 marks)
+**Assignment:** Demonstration of DevOps concepts using AI tools
 
-Everything here is free and runs locally: no API keys, no paid tiers, no
-signups. The "AI tool" is **Ollama**, an open-source engine that runs
-small LLMs (like Llama 3.2) on your own machine inside Docker.
+Everything is free and runs locally: no API keys, no paid services.
+The AI tool is **Ollama** running the open-source **phi3** model natively
+on my Mac.
 
-## 1. The DevOps concept being demonstrated
+## 1. The problem
 
-In a DevSecOps CI/CD pipeline, a security scan (OWASP ZAP) runs
-automatically on every build. The problem: raw scanner output is long
-and noisy, and someone still has to manually read it, judge severity,
-and decide whether the build should be blocked. That manual step slows
-down the pipeline and breaks automation.
+A CI/CD pipeline can run a security scan on every build, but the raw
+scanner output is long and noisy. Someone still has to read it, judge how
+serious each finding is, and decide whether the release should be stopped.
+That manual step slows the pipeline down.
 
-This project removes that manual step by having a **local AI model**
-read the scan output, prioritize findings, suggest fixes, and decide
-pass/fail for the build automatically -- demonstrating **AI-optimized
-DevOps operations** end to end.
+## 2. What this project does
 
-## 2. The stack
+An AI model reads each scan finding, rates its severity, explains the risk
+in plain English, suggests a fix, and decides whether it should block the
+build. Jenkins then acts on that decision automatically (a "security gate").
 
-- **GitHub** -- hosts the project; Jenkins pulls from it (`checkout scm`)
-- **Docker** -- runs two containers:
-  - `juice-shop` -- the deliberately-vulnerable target app being scanned
-  - `ollama` -- the free local AI engine that does the triage
-- **Jenkins** -- orchestrates the pipeline: checkout -> spin up containers
-  -> run ZAP scan -> AI triage -> publish report, all in one `Jenkinsfile`
-
-```
 GitHub repo
-   |
-   v
+|
+v
 Jenkins pipeline
-   |-- docker compose up  (Juice Shop + Ollama)
-   |-- ZAP scan (Docker)  -->  zap_report.json
-   |-- triage_ai_local.py -->  sends findings to local Ollama model
-   |-- ai_triage_report.md -->  prioritized report + build pass/fail
-```
+|-- docker compose up (OWASP Juice Shop, the test target)
+|-- OWASP ZAP baseline scan (Docker) -> zap_report.json
+|-- triage_ai_local.py -> local Ollama (phi3), one finding at a time
+|-- ai_triage_report.md -> archived as a build artifact
+|-- security gate -> build fails if any finding is CRITICAL/HIGH
 
-## 3. Files in this project
 
-- `docker-compose.yml` -- starts Juice Shop + Ollama
-- `sample_zap_report.json` -- example raw ZAP output (use this if you
-  don't want to run a live scan during your demo)
-- `triage_ai_local.py` -- sends findings to the local Ollama model,
-  writes `ai_triage_report.md`, and exits non-zero if anything critical
-  is found (this is what lets Jenkins auto-fail the build)
-- `Jenkinsfile` -- the full pipeline definition
-- `sample_output_ai_triage_report.md` -- a pre-generated example report,
-  in case you want something to show without running anything live
-- `requirements.txt` -- just `requests`, nothing paid
+## 3. Stack
 
-## 4. How to run it yourself (all free)
+- **GitHub**: hosts the code; Jenkins checks it out each build
+- **Jenkins** (installed natively): runs the pipeline defined in `Jenkinsfile`
+- **Docker**: runs Juice Shop (deliberately vulnerable app) and the ZAP scanner
+- **Ollama + phi3** (installed natively on the Mac, *not* in Docker): the
+  local AI engine. Running it natively rather than in Docker lets it use
+  the Apple GPU, which made inference much faster than in a container.
+
+## 4. Files
+
+- `Jenkinsfile`: the main pipeline (fast passive scan, used for the live demo)
+- `docker-compose.yml`: starts Juice Shop
+- `triage_ai_local.py`: sends each finding to Ollama, writes the report,
+  exits non-zero if anything is blocking. Uses temperature 0 for repeatable
+  results, and retries if Ollama returns an error
+- `requirements.txt`: just `requests`
+
+## 5. Setup (Mac)
 
 ```bash
-# 1. Start the target app + local AI engine
-docker compose up -d
+brew install ollama
+brew services start ollama
+ollama pull phi3
 
-# 2. Pull a small free model (one-time, ~1.3GB download, then fully offline)
-docker exec -it ollama ollama pull llama3.2:1b
-
-# 3. Run the triage script against the sample report
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
-python triage_ai_local.py sample_zap_report.json
 
-# Output: ai_triage_report.md
 ```
 
-To wire it into Jenkins: push this repo to GitHub, create a Jenkins
-Pipeline job pointing at it (Jenkins will pick up the `Jenkinsfile`
-automatically), and run the build. Jenkins needs Docker available on
-its agent.
+Then create a Jenkins Pipeline job ("Pipeline script from SCM", this repo,
+Script Path `Jenkinsfile`) and click Build Now. The report appears under
+Build Artifacts as `ai_triage_report.md`.
 
-## 5. Before / After (the slide you want)
+## 6. Results and honest limitations
 
-| | Manual triage | AI-assisted triage (this project) |
+- The live scan uses `zap-baseline.py`, a **passive** scan. It finds
+  configuration issues (missing headers, caching), not exploitable bugs such
+  as SQL injection, so a live run correctly comes back LOW/MEDIUM and the
+  build passes. `sample_zap_report.json` is used to show the CRITICAL path.
+- An active scan (`zap-full-scan.py`) was also tried against the live Juice
+  Shop app. It still came back with only LOW/MEDIUM findings, because Juice
+  Shop's vulnerabilities are deliberately hidden behind custom app logic
+  rather than generic reflected patterns — a known limitation of automated
+  scanners against this specific target, not a flaw in the triage logic.
+- Small local models can vary between runs on borderline cases. Temperature 0
+  reduces this but does not remove it. A 1B model was tried first and was
+  unreliable (over-flagged almost everything as CRITICAL), so phi3 is used.
+
+## 7. Manual vs AI-assisted triage
+
+| | Manual triage | AI-assisted triage |
 |---|---|---|
-| Input | Raw ZAP JSON/HTML report | Same raw report |
-| Time to prioritize 6 findings | ~10-15 min of manual reading | Seconds |
-| Consistency | Varies by reviewer | Same criteria every run |
-| Output | List of findings, no fix guidance | Prioritized table + concrete fix + build pass/fail |
-| Fits in CI/CD? | No -- manual step breaks automation | Yes -- script exit code gates the Jenkins stage |
-| Cost | N/A | $0 -- fully local, no API key |
+| Who decides severity | A security engineer reading the report | The local AI model |
+| Consistency | Varies by reviewer | Same prompt and settings every run |
+| Output | Findings list | Severity, plain-English impact, fix, and pass/fail |
+| Fits in CI/CD | Manual step breaks automation | Runs as a pipeline stage |
+| Cost | Engineer time | Free (local, no API) |
+| Time | Depends on reviewer (estimate, not measured) | A few minutes on an M2 Mac (see Jenkins stage view) |
 
-## 6. Mapping to the rubric
+## 8. Mapping to the rubric
 
-- **DevOps concept from syllabus:** CI/CD pipeline security gating /
-  shift-left security, using GitHub + Docker + Jenkins.
-- **AI tool used for optimization:** a local open-source LLM (via
-  Ollama) automates triage, prioritization, and remediation drafting --
-  work that would otherwise need a human security engineer.
-- **Better system performance:** faster feedback loop, consistent
-  prioritization, and the pipeline can now auto-block risky builds
-  instead of waiting on a human reviewer -- with zero recurring cost.
+- **DevOps concept:** CI/CD with a security gate (DevSecOps, shift-left)
+- **AI tool optimizing DevOps:** a local LLM automates triage, prioritisation
+  and remediation drafting inside the pipeline
+- **Better system performance:** faster, consistent decisions and automatic
+  build blocking, at zero recurring cost
